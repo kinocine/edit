@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Plain Text Editor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Microsoft YaHei", sans-serif;
+      background-color: #f5f6f8;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 16px;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .info {
+      font-size: 13px;
+      color: #555;
+    }
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    button:hover { background-color: #e9e9e9; }
+    button.primary {
+      background-color: #1a73e8;
+      color: #fff;
+      border-color: #1a73e8;
+    }
+    button.primary:hover { background-color: #1557b0; }
+    .font-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 8px;
+      font-size: 13px;
+      color: #666;
+    }
+    .font-controls button {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .find-replace-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      background-color: #eef1f5;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .find-replace-bar input {
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+    }
+    .find-replace-bar input:focus { border-color: #1a73e8; }
+    textarea {
+      flex: 1;
+      width: 100%;
+      padding: 16px;
+      font-size: 16px;
+      line-height: 1.8;
+      color: #222;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background-color: #fff;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    textarea:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+    }
+    .save-indicator {
+      font-size: 12px;
+      color: #28a745;
+      margin-left: 6px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <div class="info">
+      글자 수: <strong id="charCount">0</strong>자 (공백제외: <strong id="charCountNoSpace">0</strong>자) | 줄 수: <strong id="lineCount">0</strong>줄
+      <span id="saveIndicator" class="save-indicator">✓ 자동저장됨</span>
+    </div>
+    
+    <div class="btn-group">
+      <div class="font-controls">
+        <span>글자</span>
+        <button onclick="changeFontSize(-1)">A-</button>
+        <button onclick="changeFontSize(1)">A+</button>
+      </div>
+      <button onclick="toggleFindReplace()">찾기/바꾸기</button>
+      <button onclick="mergeBrokenLines()">기사 줄바꿈 이어붙이기</button>
+      <button onclick="cleanExtraSpaces()">빈 줄 압축</button>
+      <button onclick="downloadText()">.txt 저장</button>
+      <button onclick="clearText()">비우기</button>
+      <button class="primary" onclick="copyText()">전체 복사</button>
+    </div>
+  </div>
+
+  <div id="findReplaceBar" class="find-replace-bar" style="display: none;">
+    <input type="text" id="findInput" placeholder="찾을 단어">
+    <input type="text" id="replaceInput" placeholder="바꿀 단어">
+    <button onclick="executeReplace()">모두 바꾸기</button>
+    <button onclick="toggleFindReplace()">닫기</button>
+  </div>
+
+  <textarea id="editor" placeholder="기사, 워드, 중국어 등 어떤 글이든 붙여넣으세요. 플레인 텍스트로 자동 변환됩니다."></textarea>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const charCount = document.getElementById('charCount');
+    const charCountNoSpace = document.getElementById('charCountNoSpace');
+    const lineCount = document.getElementById('lineCount');
+    const saveIndicator = document.getElementById('saveIndicator');
+    const findReplaceBar = document.getElementById('findReplaceBar');
+    let currentFontSize = 16;
+
+    // 로컬 스토리지 자동 복원
+    window.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('plain_editor_draft');
+      if (saved) {
+        editor.value = saved;
+        updateStats();
+      }
+    });
+
+    // 붙여넣기 시 플레인 텍스트만 주입
+    editor.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const currentVal = editor.value;
+
+      editor.value = currentVal.substring(0, start) + plainText + currentVal.substring(end);
+      editor.selectionStart = editor.selectionEnd = start + plainText.length;
+      handleInput();
+    });
+
+    // 실시간 글자수/줄수 및 로컬스토리지 자동저장
+    function handleInput() {
+      updateStats();
+      localStorage.setItem('plain_editor_draft', editor.value);
+      showSaveIndicator();
+    }
+    editor.addEventListener('input', handleInput);
+
+    function updateStats() {
+      const val = editor.value;
+      charCount.textContent = val.length.toLocaleString();
+      charCountNoSpace.textContent = val.replace(/\s/g, '').length.toLocaleString();
+      lineCount.textContent = val ? val.split('\n').length.toLocaleString() : '0';
+    }
+
+    let saveTimer;
+    function showSaveIndicator() {
+      saveIndicator.style.display = 'inline';
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveIndicator.style.display = 'none';
+      }, 1000);
+    }
+
+    // 1. 기사 강제 줄바꿈 이어붙이기 (문장 끝 마침표/물음표/느낌표 등이 아닌 줄바꿈을 띄어쓰기 한 칸으로 통합)
+    function mergeBrokenLines() {
+      if (!editor.value) return;
+      // 빈 줄(문단 나눔)은 유지하고, 문장 중간의 어색한 줄바꿈만 한 칸 공백으로 치환
+      const text = editor.value.replace(/([^\n.?!。？！])\n([^\n])/g, '$1 $2');
+      editor.value = text;
+      handleInput();
+    }
+
+    // 2. 빈 줄 압축 및 앞뒤 공백 정리
+    function cleanExtraSpaces() {
+      editor.value = editor.value
+        .split('\n')
+        .map(line => line.trim())
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n');
+      handleInput();
+    }
+
+    // 3. 찾기 및 바꾸기 토글
+    function toggleFindReplace() {
+      const isVisible = findReplaceBar.style.display === 'flex';
+      findReplaceBar.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) document.getElementById('findInput').focus();
+    }
+
+    function executeReplace() {
+      const findVal = document.getElementById('findInput').value;
+      const replaceVal = document.getElementById('replaceInput').value;
+      if (!findVal) return;
+
+      editor.value = editor.value.split(findVal).join(replaceVal);
+      handleInput();
+    }
+
+    // 4. 글자 크기 조절
+    function changeFontSize(delta) {
+      currentFontSize = Math.min(Math.max(12, currentFontSize + delta), 28);
+      editor.style.fontSize = currentFontSize + 'px';
+    }
+
+    // 5. TXT 파일 다운로드
+    function downloadText() {
+      if (!editor.value) return;
+      const blob = new Blob([editor.value], { type: 'text/plain;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `text_${new Date().toISOString().slice(0, 10)}.txt`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    // 6. 비우기 & 복사
+    function clearText() {
+      if (confirm('모두 지우시겠습니까?')) {
+        editor.value = '';
+        localStorage.removeItem('plain_editor_draft');
+        updateStats();
+      }
+    }
+
+    function copyText() {
+      if (!editor.value) return;
+      navigator.clipboard.writeText(editor.value).then(() => {
+        alert('전체 복사 완료');
+      });
+    }
+  </script>
+</body>
+</html>
