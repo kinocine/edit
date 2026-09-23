@@ -123,7 +123,7 @@
       <button onclick="cleanExtraSpaces()">빈 줄 압축</button>
       <button onclick="downloadText()">.txt 저장</button>
       <button onclick="clearText()">비우기</button>
-      <button class="primary" onclick="copyText()">전체 복사</button>
+      <button class="primary" id="copyBtn" onclick="copyText()">전체 복사</button>
     </div>
   </div>
 
@@ -143,6 +143,7 @@
     const lineCount = document.getElementById('lineCount');
     const saveIndicator = document.getElementById('saveIndicator');
     const findReplaceBar = document.getElementById('findReplaceBar');
+    const copyBtn = document.getElementById('copyBtn');
     let currentFontSize = 16;
 
     // 로컬 스토리지 자동 복원
@@ -191,10 +192,9 @@
       }, 1000);
     }
 
-    // 1. 기사 강제 줄바꿈 이어붙이기 (문장 끝 마침표/물음표/느낌표 등이 아닌 줄바꿈을 띄어쓰기 한 칸으로 통합)
+    // 1. 기사 강제 줄바꿈 이어붙이기
     function mergeBrokenLines() {
       if (!editor.value) return;
-      // 빈 줄(문단 나눔)은 유지하고, 문장 중간의 어색한 줄바꿈만 한 칸 공백으로 치환
       const text = editor.value.replace(/([^\n.?!。？！])\n([^\n])/g, '$1 $2');
       editor.value = text;
       handleInput();
@@ -243,7 +243,7 @@
       URL.revokeObjectURL(link.href);
     }
 
-    // 6. 비우기 & 복사
+    // 6. 비우기
     function clearText() {
       if (confirm('모두 지우시겠습니까?')) {
         editor.value = '';
@@ -252,11 +252,40 @@
       }
     }
 
+    // 7. 전체 복사 (보안 차단 없는 강제 복사 방식 적용)
     function copyText() {
       if (!editor.value) return;
-      navigator.clipboard.writeText(editor.value).then(() => {
-        alert('전체 복사 완료');
-      });
+
+      editor.focus();
+      editor.select();
+      editor.setSelectionRange(0, 999999);
+
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch (e) {
+        copied = false;
+      }
+
+      if (!copied && navigator.clipboard) {
+        navigator.clipboard.writeText(editor.value).then(() => {
+          showCopySuccess();
+        }).catch(() => {
+          alert('복사 권한이 없어 수동 복사가 필요합니다. 텍스트를 선택해 두었으니 Cmd+C를 눌러주세요.');
+        });
+      } else {
+        showCopySuccess();
+      }
+    }
+
+    function showCopySuccess() {
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✓ 복사완료';
+      copyBtn.style.backgroundColor = '#28a745';
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.backgroundColor = '#1a73e8';
+      }, 1200);
     }
   </script>
 </body>
